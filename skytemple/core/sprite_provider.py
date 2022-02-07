@@ -29,16 +29,13 @@ from skytemple_files.dungeon_data.mappa_bin.trap_list import MappaTrapType
 from skytemple_files.graphics.img_itm.model import ImgItm
 from skytemple_files.graphics.img_trp.model import ImgTrp
 
-try:
-    from PIL import Image, ImageFilter
-except ImportError:
-    from pil import Image, ImageFilter
+from PIL import Image, ImageFilter
 from gi.repository import Gdk, Gtk, GdkPixbuf
 
 from skytemple.core.img_utils import pil_to_cairo_surface
 from skytemple.core.model_context import ModelContext
 from skytemple.core.ui_utils import data_dir
-from skytemple_files.common.task_runner import AsyncTaskRunner
+from skytemple.core.async_tasks.delegator import AsyncTaskDelegator
 from skytemple_files.common.types.file_types import FileType
 from skytemple_files.common.util import MONSTER_MD, MONSTER_BIN, open_utf8, DUNGEON_BIN
 from skytemple_files.container.bin_pack.model import BinPack
@@ -51,7 +48,7 @@ if TYPE_CHECKING:
 
 SpriteAndOffsetAndDims = Tuple[cairo.ImageSurface, int, int, int, int]
 ActorSpriteKey = Tuple[Union[str, int], int]
-sprite_provider_lock = threading.Lock()
+sprite_provider_lock = threading.RLock()
 logger = logging.getLogger(__name__)
 
 FALLBACK_STANDIN_ENTITIY = 1
@@ -157,12 +154,12 @@ FILE_NAME_STANDIN_SPRITES = '.standin_sprites.json'
 class SpriteProvider:
     """
     SpriteProvider. This class renders sprites using Threads. If a Sprite is requested, a loading icon
-    is returned instead, until it is loaded by the AsyncTaskRunner.
+    is returned instead, until it is loaded by the AsyncTaskDelegator.
     """
     def __init__(self, project: 'RomProject'):
         self._project = project
-        self._loader_surface_dims = None
-        self._loader_surface = None
+        self._loader_surface_dims: Optional[Tuple[int, int]] = None
+        self._loader_surface: Optional[cairo.ImageSurface] = None
 
         self._loaded__monsters: Dict[ActorSpriteKey, SpriteAndOffsetAndDims] = {}
         self._loaded__monsters_outlines: Dict[ActorSpriteKey, SpriteAndOffsetAndDims] = {}
@@ -284,10 +281,10 @@ class SpriteProvider:
         self._load_dungeon_bin()
         with sprite_provider_lock:
             if trp in self._loaded__traps:
-                return self._loaded__traps[trp]
+                return self._loaded__traps[trp]  # type: ignore
             if trp not in self._requests__traps:
-                self._requests__traps.append(trp)
-                self._load_trap(trp, after_load_cb)
+                self._requests__traps.append(trp)  # type: ignore
+                self._load_trap(trp, after_load_cb)  # type: ignore
         return self.get_loader()
 
     def get_for_item(self, itm: ItemPEntry, after_load_cb=lambda: None) -> SpriteAndOffsetAndDims:
@@ -305,7 +302,7 @@ class SpriteProvider:
         return self.get_loader()
 
     def _load_actor_placeholder(self, actor_id, direction_id: int, after_load_cb):
-        AsyncTaskRunner.instance().run_task(self._load_actor_placeholder__impl(actor_id, direction_id, after_load_cb))
+        AsyncTaskDelegator.run_task(self._load_actor_placeholder__impl(actor_id, direction_id, after_load_cb))
 
     async def _load_actor_placeholder__impl(self, actor_id, direction_id: int, after_load_cb):
         md_index = FALLBACK_STANDIN_ENTITIY
@@ -337,7 +334,7 @@ class SpriteProvider:
                     new_data.append((255, 255, 255, 0))
                 else:
                     new_data.append(item)
-            out_sprite.putdata(new_data)
+            out_sprite.putdata(new_data)  # type: ignore
 
             # /
 
@@ -351,7 +348,7 @@ class SpriteProvider:
         after_load_cb()
 
     def _load_monster(self, md_index, direction_id: int, after_load_cb):
-        AsyncTaskRunner.instance().run_task(self._load_monster__impl(md_index, direction_id, after_load_cb))
+        AsyncTaskDelegator.run_task(self._load_monster__impl(md_index, direction_id, after_load_cb))
 
     async def _load_monster__impl(self, md_index, direction_id: int, after_load_cb):
         try:
@@ -366,7 +363,7 @@ class SpriteProvider:
         after_load_cb()
 
     def _load_monster_outline(self, md_index, direction_id: int, after_load_cb):
-        AsyncTaskRunner.instance().run_task(self._load_monster_outline__impl(md_index, direction_id, after_load_cb))
+        AsyncTaskDelegator.run_task(self._load_monster_outline__impl(md_index, direction_id, after_load_cb))
 
     async def _load_monster_outline__impl(self, md_index, direction_id: int, after_load_cb):
         try:
@@ -399,7 +396,7 @@ class SpriteProvider:
             with self._monster_bin as monster_bin:
                 sprite = self._load_sprite_from_bin_pack(monster_bin, actor_sprite_id)
 
-                ani_group = sprite.get_animations_for_group(sprite.anim_groups[0])
+                ani_group = sprite.anim_groups[0]
                 frame_id = direction_id - 1 if direction_id > 0 else 0
                 mfg_id = ani_group[frame_id].frames[0].frame_id
 
@@ -411,12 +408,12 @@ class SpriteProvider:
             raise RuntimeError(f"Error loading monster sprite for {md_index}") from e
 
     def _load_object(self, name, after_load_cb):
-        AsyncTaskRunner.instance().run_task(self._load_object__impl(name, after_load_cb))
+        AsyncTaskDelegator.run_task(self._load_object__impl(name, after_load_cb))
 
     async def _load_object__impl(self, name, after_load_cb):
         try:
             with self._load_sprite_from_rom(f'GROUND/{name}.wan') as sprite:
-                ani_group = sprite.get_animations_for_group(sprite.anim_groups[0])
+                ani_group = sprite.anim_groups[0]
                 frame_id = 0
                 mfg_id = ani_group[frame_id].frames[0].frame_id
 
@@ -435,10 +432,11 @@ class SpriteProvider:
         after_load_cb()
 
     def _load_trap(self, trp: int, after_load_cb):
-        AsyncTaskRunner.instance().run_task(self._load_trap__impl(trp, after_load_cb))
+        AsyncTaskDelegator.run_task(self._load_trap__impl(trp, after_load_cb))
 
     async def _load_trap__impl(self, trp: int, after_load_cb):
         try:
+            assert self._dungeon_bin is not None
             with self._dungeon_bin as dungeon_bin:
                 traps: ImgTrp = dungeon_bin.get(TRP_FILENAME)
             surf = pil_to_cairo_surface(traps.to_pil(trp, TRAP_PALETTE_MAP[trp]).convert('RGBA'))
@@ -455,10 +453,11 @@ class SpriteProvider:
         after_load_cb()
 
     def _load_item(self, itm: ItemPEntry, after_load_cb):
-        AsyncTaskRunner.instance().run_task(self._load_item__impl(itm, after_load_cb))
+        AsyncTaskDelegator.run_task(self._load_item__impl(itm, after_load_cb))
 
     async def _load_item__impl(self, item: ItemPEntry, after_load_cb):
         try:
+            assert self._dungeon_bin is not None
             with self._dungeon_bin as dungeon_bin:
                 items: ImgItm = dungeon_bin.get(ITM_FILENAME)
             img = items.to_pil(item.sprite, item.palette)
@@ -490,6 +489,8 @@ class SpriteProvider:
         """
         Returns the loader sprite. A "loading" icon with the size ~24x24px.
         """
+        assert self._loader_surface_dims
+        assert self._loader_surface
         w, h = self._loader_surface_dims
         return self._loader_surface, int(w/2), h, w, h
 

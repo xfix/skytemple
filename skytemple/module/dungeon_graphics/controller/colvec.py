@@ -27,10 +27,7 @@ from skytemple_files.graphics.colvec.model import Colvec
 from skytemple_files.graphics.colvec import *
 from skytemple_dtef.explorers_dtef import ExplorersDtef
 
-try:
-    from PIL import Image
-except:
-    from pil import Image
+from PIL import Image
 from gi.repository import Gtk
 
 from skytemple.controller.main import MainController
@@ -59,7 +56,7 @@ class ColvecController(AbstractController):
         self.dpc = None
         self.dpci = None
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
 
     def get_view(self) -> Gtk.Widget:
         self.builder = self._get_builder(__file__, 'colvec.glade')

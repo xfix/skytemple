@@ -37,8 +37,9 @@ from skytemple_files.data.tbl_talk.model import TblTalk, TalkType
 from skytemple_files.data.md.model import Md, MdEntry, MdProperties, ShadowSize
 from skytemple_files.data.monster_xml import monster_xml_import, GenderedConvertEntry
 from skytemple_files.data.waza_p.model import WazaP
-from skytemple_files.graphics.kao.model import KaoImage, SUBENTRIES, Kao
-from skytemple_files.hardcoded.monster_sprite_data_table import HardcodedMonsterSpriteDataTable
+from skytemple_files.graphics.kao import SUBENTRIES
+from skytemple_files.graphics.kao.protocol import KaoImageProtocol, KaoProtocol
+from skytemple_files.hardcoded.monster_sprite_data_table import HardcodedMonsterSpriteDataTable, HardcodedMonsterGroundIdleAnimTable, IdleAnimType
 from skytemple_files.common.i18n_util import _
 from skytemple_files.common.util import normalize_string
 MONSTER_MD_FILE = 'BALANCE/monster.md'
@@ -69,9 +70,9 @@ class MonsterModule(AbstractModule):
         self.waza_p2_bin: WazaP = self.project.open_file_in_rom(WAZA_P2_BIN, FileType.WAZA_P)
         self.tbl_talk: TblTalk = self.project.open_file_in_rom(TBL_TALK_FILE, FileType.TBL_TALK)
 
-        self._tree_model = None
-        self._tree_iter__entity_roots = {}
-        self._tree_iter__entries = []
+        self._tree_model: Optional[Gtk.TreeModel] = None
+        self._tree_iter__entity_roots: Dict[int, Gtk.TreeIter] = {}
+        self._tree_iter__entries: Dict[int, Gtk.TreeIter] = {}
         self.effective_base_attr = 'md_index_base'
 
     def load_tree_items(self, item_store: TreeStore, root_node):
@@ -200,17 +201,17 @@ class MonsterModule(AbstractModule):
         v.show_all()
         return v
 
-    def get_portraits_for_export(self, item_id) -> Tuple[Optional[List[KaoImage]], Optional[List[KaoImage]]]:
-        portraits = None
-        portraits2 = None
+    def get_portraits_for_export(self, item_id) -> Tuple[Optional[List[Optional[KaoImageProtocol]]], Optional[List[Optional[KaoImageProtocol]]]]:
+        portraits: Optional[List[Optional[KaoImageProtocol]]] = None
+        portraits2: Optional[List[Optional[KaoImageProtocol]]] = None
         portrait_module = self.project.get_module('portrait')
-        kao = portrait_module.kao
-        if item_id > -1 and item_id < kao.toc_len:
+        kao: KaoProtocol = portrait_module.kao
+        if -1 < item_id < kao.n_entries():
             portraits = []
             for kao_i in range(0, SUBENTRIES):
                 portraits.append(kao.get(item_id, kao_i))
 
-        if item_id > -1 and MdProperties.NUM_ENTITIES + item_id < kao.toc_len:
+        if item_id > -1 and MdProperties.NUM_ENTITIES + item_id < kao.n_entries():
             portraits2 = []
             for kao_i in range(0, SUBENTRIES):
                 portraits2.append(kao.get(MdProperties.NUM_ENTITIES + item_id, kao_i))
@@ -222,6 +223,26 @@ class MonsterModule(AbstractModule):
             return Gtk.Label.new(_("Stats and moves are only editable for base forms.")), None
         controller = LevelUpController(self, item_id)
         return controller.get_view(), controller
+
+    def set_idle_anim_type(self, item_id, value):
+        """Set idle value of the monster"""
+        if self.project.is_patch_applied('ChangePokemonGroundAnim'):
+            def update(ov11):
+                static_data = self.project.get_rom_module().get_static_data()
+                values = HardcodedMonsterGroundIdleAnimTable.get(ov11, static_data)
+                values[item_id] = value
+                HardcodedMonsterGroundIdleAnimTable.set(values, ov11, static_data)
+            self.project.modify_binary(BinaryName.OVERLAY_11, update)
+            self._mark_as_modified_in_tree(item_id)
+
+    def get_idle_anim_type(self, item_id):
+        """Get idle value of the monster"""
+        if self.project.is_patch_applied('ChangePokemonGroundAnim'):
+            ov11 = self.project.get_binary(BinaryName.OVERLAY_11)
+            static_data = self.project.get_rom_module().get_static_data()
+            return HardcodedMonsterGroundIdleAnimTable.get(ov11, static_data)[item_id]
+        else:
+            return None
 
     def set_personality(self, item_id, value):
         """Set personality value of the monster"""
@@ -316,7 +337,9 @@ class MonsterModule(AbstractModule):
         portraits, portraits2 = self.get_portraits_for_export(stats_and_portraits_id)
         return names, md_gender1, md_gender2, moveset, moveset2, stats, portraits, portraits2, \
                self.get_personality(md_gender1.md_index), \
-               self.get_personality(md_gender2.md_index) if md_gender2 is not None else None
+               self.get_personality(md_gender2.md_index) if md_gender2 is not None else None, \
+               self.get_idle_anim_type(md_gender1.md_index), \
+               self.get_idle_anim_type(md_gender2.md_index) if md_gender2 is not None else None
 
     def update_monster_sort_lists(self, lang):
         sp = self.project.get_string_provider()
@@ -340,7 +363,7 @@ class MonsterModule(AbstractModule):
 
         for monster_id in selected_monsters:
             entry = self.get_entry(monster_id)
-            names, md_gender1, md_gender2, moveset, moveset2, stats, portraits, portraits2, personality1, personality2 = self.get_export_data(entry)
+            names, md_gender1, md_gender2, moveset, moveset2, stats, portraits, portraits2, personality1, personality2, idle_anim1, idle_anim2 = self.get_export_data(entry)
             we_are_gender1 = monster_id < MdProperties.NUM_ENTITIES
 
             md_gender1_imp = md_gender1
@@ -352,12 +375,14 @@ class MonsterModule(AbstractModule):
                     md_gender2_imp = None
                     portraits2_imp = None
                     personality2 = None
+                    idle_anim2 = None
                 else:
                     md_gender1_imp = None
                     portraits1_imp = None
                     personality1 = None
-            md_gender1_imp_wrapped = GenderedConvertEntry(md_gender1, personality1)
-            md_gender2_imp_wrapped = GenderedConvertEntry(md_gender2, personality2)
+                    idle_anim1 = None
+            md_gender1_imp_wrapped = GenderedConvertEntry(md_gender1, personality1, idle_anim1)
+            md_gender2_imp_wrapped = GenderedConvertEntry(md_gender2, personality2, idle_anim2)
 
             monster_xml_import(
                 xml, md_gender1_imp_wrapped, md_gender2_imp_wrapped,
@@ -368,12 +393,18 @@ class MonsterModule(AbstractModule):
                 if we_are_gender1:
                     if md_gender1_imp_wrapped.personality is not None:
                         self.set_personality(md_gender1.md_index, md_gender1_imp_wrapped.personality)
+                    if md_gender1_imp_wrapped.idle_anim is not None:
+                        self.set_idle_anim_type(md_gender1.md_index, md_gender1_imp_wrapped.idle_anim)
                 else:
                     if md_gender2_imp_wrapped.personality is not None:
                         self.set_personality(md_gender2.md_index, md_gender2_imp_wrapped.personality)
+                    if md_gender2_imp_wrapped.idle_anim is not None:
+                        self.set_idle_anim_type(md_gender2.md_index, md_gender2_imp_wrapped.idle_anim)
             else:
                 if md_gender1_imp_wrapped.personality is not None:
                     self.set_personality(md_gender1.md_index, md_gender1_imp_wrapped.personality)
+                if md_gender1_imp_wrapped.idle_anim is not None:
+                    self.set_idle_anim_type(md_gender1.md_index, md_gender1_imp_wrapped.idle_anim)
             if stats:
                 self.set_m_level_bin_entry(getattr(entry, b_attr) - 1, stats)
             if names:
@@ -386,22 +417,14 @@ class MonsterModule(AbstractModule):
                 sp.mark_as_modified()
 
             portrait_module = self.project.get_module('portrait')
-            kao: Kao = portrait_module.kao
+            kao: KaoProtocol = portrait_module.kao
             portraits = portraits if we_are_gender1 else portraits2
             if portraits:
                 for i, portrait in enumerate(portraits):
-                    existing = kao.get(monster_id - 1, i)
                     if portrait:
-                        if existing:
-                            existing.compressed_img_data = portrait.compressed_img_data
-                            existing.pal_data = portrait.pal_data
-                            existing.modified = True
-                            existing.as_pil = None
-                        else:
-                            kao.set(monster_id - 1, i, portrait)
+                        kao.set(monster_id - 1, i, portrait)
                     else:
-                        # TODO: Support removing portraits
-                        pass
+                        kao.delete(monster_id - 1, i)
             self.refresh(monster_id)
             self.mark_md_as_modified(monster_id)
             self.project.mark_as_modified(WAZA_P_BIN)

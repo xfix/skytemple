@@ -18,6 +18,7 @@ import logging
 import sys
 import webbrowser
 from typing import TYPE_CHECKING, Optional, List
+
 from skytemple_files.common.i18n_util import _, f
 
 from gi.repository import Gtk
@@ -33,6 +34,7 @@ from skytemple_files.data.inter_d.model import InterDEntry, InterDEntryType
 
 if TYPE_CHECKING:
     from skytemple.module.moves_items.module import MovesItemsModule
+    from skytemple.module.lists.module import ListsModule
 from skytemple_files.common.i18n_util import _
 
 logger = logging.getLogger(__name__)
@@ -92,7 +94,7 @@ class DungeonInterruptController(AbstractController):
         store: Gtk.ListStore = self.builder.get_object('interrupt_store')
         store.clear()
         for p in self.inter_d.list_dungeons[self._get_current_dungeon()]:
-            store.append([p.floor,p.ent_type.value,p.game_var_id,p.param1,p.param2,p.ent_type.explanation,self.var_names[p.game_var_id]])
+            store.append([p.floor,p.ent_type.value,p.game_var_id,p.param1,p.param2,p.ent_type.explanation,self.var_names[p.game_var_id],p.continue_music])
     
     def _build_list(self):
         dungeon = self._get_current_dungeon()
@@ -108,6 +110,7 @@ class DungeonInterruptController(AbstractController):
             e.game_var_id = v[2]
             e.param1 = v[3]
             e.param2 = v[4]
+            e.continue_music = v[7]
             self.inter_d.list_dungeons[dungeon].append(e)
         
         self.module.mark_dungeon_interrupts_as_modified()
@@ -133,7 +136,7 @@ class DungeonInterruptController(AbstractController):
         
     def on_btn_add_clicked(self, *args):
         store: Gtk.ListStore = self.builder.get_object('interrupt_store')
-        store.append([0,0,0,0,0,InterDEntryType(0).explanation,self.var_names[0]])
+        store.append([0,0,0,0,0,InterDEntryType(0).explanation,self.var_names[0],0])
         self._build_list()
         
     def on_btn_remove_clicked(self, *args):
@@ -182,4 +185,8 @@ class DungeonInterruptController(AbstractController):
         except ValueError:
             return
         self._build_list()
-        
+
+    def on_continue_music_toggled(self, widget, path):
+        tree_store: Gtk.ListStore = self.builder.get_object('interrupt_store')
+        tree_store[path][7] = not widget.get_active()
+        self._build_list()

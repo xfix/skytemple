@@ -39,6 +39,7 @@ from skytemple_files.data.md.model import Gender, PokeType, MovementType, IQGrou
     AdditionalRequirement, MdProperties, ShadowSize, MONSTER_BIN, MdEntry
 from skytemple.controller.main import MainController as SkyTempleMainController
 from skytemple_files.data.monster_xml import monster_xml_export
+from skytemple_files.hardcoded.monster_sprite_data_table import IdleAnimType
 from skytemple_files.common.i18n_util import f, _
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ PATTERN = re.compile(r'.*\(#(\d+)\).*')
 logger = logging.getLogger(__name__)
 MAX_EVOS = 8
 MAX_EGGS = 6
+
 
 class MonsterController(AbstractController):
     _last_open_tab_id = 0
@@ -59,7 +61,7 @@ class MonsterController(AbstractController):
 
         self._monster_bin = self.module.project.open_file_in_rom(MONSTER_BIN, FileType.BIN_PACK, threadsafe=True)
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
         self._is_loading = False
         self._string_provider = module.project.get_string_provider()
         self._sprite_provider = module.project.get_sprite_provider()
@@ -76,6 +78,7 @@ class MonsterController(AbstractController):
 
     def get_view(self) -> Gtk.Widget:
         self.builder = self._get_builder(__file__, 'monster.glade')
+        assert self.builder
 
         self._sprite_provider.reset()
         self._portrait_provider.reset()
@@ -108,7 +111,7 @@ class MonsterController(AbstractController):
             self.builder.get_object('lbl_unk_17').set_text(_("Sprite Size"))
             self.builder.get_object('lbl_unk_18').set_text(_("Sprite File Size"))
 
-        self._ent_names = {}
+        self._ent_names: Dict[int, str] = {}
         
         self._init_monster_store()
 
@@ -142,7 +145,7 @@ class MonsterController(AbstractController):
 
         self._monster_bin = None
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
         self._is_loading = False
         self._string_provider = None
         self._sprite_provider = None
@@ -208,6 +211,13 @@ class MonsterController(AbstractController):
     def on_entry_personality_changed(self, w, *args):
         try:
             self.module.set_personality(self.item_id, int(w.get_text()))
+        except ValueError:
+            pass
+    
+    def on_cb_idle_anim_changed(self, w, *args):
+        try:
+            val = w.get_model()[w.get_active_iter()][0]
+            self.module.set_idle_anim_type(self.item_id, IdleAnimType(val))
         except ValueError:
             pass
         
@@ -361,6 +371,18 @@ class MonsterController(AbstractController):
         self._update_param_label()
         self.mark_as_modified()
 
+    def on_btn_help_idle_clicked(self, w, *args):
+        md = SkyTempleMessageDialog(
+            MainController.window(),
+            Gtk.DialogFlags.DESTROY_WITH_PARENT, Gtk.MessageType.INFO,
+            Gtk.ButtonsType.OK,
+            _("This value can only be edited with the ChangePokemonGroundAnim patch. \n"
+              "This tells how idle animations should be handled for each pokemon. "),
+            title=_("Idle Animation Types")
+        )
+        md.run()
+        md.destroy()
+    
     def on_btn_help_evo_params_clicked(self, w, *args):
         md = SkyTempleMessageDialog(
             MainController.window(),
@@ -693,7 +715,7 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
                     ]
                 )
 
-        names, md_gender1, md_gender2, moveset, moveset2, stats, portraits, portraits2, personality1, personality2 = self.module.get_export_data(self.entry)
+        names, md_gender1, md_gender2, moveset, moveset2, stats, portraits, portraits2, personality1, personality2, idle_anim1, idle_anim2 = self.module.get_export_data(self.entry)
         we_are_gender1 = md_gender1 == self.entry
 
         if self.module.project.is_patch_applied('ExpandPokeList'):
@@ -701,6 +723,7 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
             md_gender2 = None
             portraits2 = None
             personality2 = None
+            idle_anim2 = None
 
         if md_gender2 is None:
             sw: Gtk.Switch = self.builder.get_object('export_type_other_gender')
@@ -770,7 +793,7 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
             xml = monster_xml_export(
                 self.module.project.get_rom_module().get_static_data().game_version,
                 md_gender1, md_gender2, names, moveset, moveset2, stats, portraits, portraits2,
-                personality1, personality2
+                personality1, personality2, idle_anim1, idle_anim2
             )
 
             # 1. Export to file
@@ -831,7 +854,7 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
             SkyTempleMainController.reload_view()
 
     def on_cr_export_selected_toggled(self, w: Gtk.CellRendererToggle, path, *args):
-        store: Gtk.TreeStore = self.builder.get_object('export_dialog_store')
+        store: Gtk.TreeStore = self.builder.get_object('export_dialog_store')  # type: ignore
         is_active = not w.get_active()
         store[path][5] = is_active
         store[path][6] = False
@@ -907,6 +930,8 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
         self._comboxbox_for_enum(['cb_evo_method'], EvolutionMethod)
         # Additional Requirement
         self._comboxbox_for_enum(['cb_evo_param2'], AdditionalRequirement)
+        # Idle Animation Type
+        self._comboxbox_for_enum(['cb_idle_anim'], IdleAnimType)
         
         # Shadow Size
         self._comboxbox_for_enum(['cb_shadow_size'], ShadowSize)
@@ -932,6 +957,11 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
                                                                        langs[lang_id]))
 
         # Stats
+        a = self.module.get_idle_anim_type(self.item_id)
+        if a==None:
+            self.builder.get_object('cb_idle_anim').set_sensitive(False)
+        else:
+            self._set_cb('cb_idle_anim', a.value)
         self._set_entry('entry_personality', self.module.get_personality(self.item_id))
         self._set_entry('entry_unk31', self.entry.unk31)
         self._set_entry('entry_national_pokedex_number', self.entry.national_pokedex_number)
@@ -991,18 +1021,18 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
     def _comboxbox_for_enum(self, names: List[str], enum: Type[Enum], sort_by_name = False):
         store = Gtk.ListStore(int, str)  # id, name
         if sort_by_name:
-            enum = sorted(enum, key=lambda x:self._enum_entry_to_str(x))
+            enum = sorted(enum, key=lambda x:self._enum_entry_to_str(x))  # type: ignore
         for entry in enum:
             store.append([entry.value, self._enum_entry_to_str(entry)])
         for name in names:
-            self._fast_set_comboxbox_store(self.builder.get_object(name), store, 1)
+            self._fast_set_comboxbox_store(self.builder.get_object(name), store, 1)  # type: ignore
 
     def _comboxbox_for_enum_with_strings(self, names: List[str], enum: Type[Enum], string_type: StringType):
         store = Gtk.ListStore(int, str)  # id, name
         for entry in enum:
             store.append([entry.value, self._string_provider.get_value(string_type, entry.value)])
         for name in names:
-            self._fast_set_comboxbox_store(self.builder.get_object(name), store, 1)
+            self._fast_set_comboxbox_store(self.builder.get_object(name), store, 1)  # type: ignore
 
     @staticmethod
     def _fast_set_comboxbox_store(cb: Gtk.ComboBox, store: Gtk.ListStore, col):
@@ -1370,7 +1400,7 @@ Each drop type x has a chance of (x rate)/(sum of all the rates) to be selected.
             val = int(w.get_text())
         except ValueError:
             return
-        setattr(self._md_evo.evo_stats[self.item_id], attr_name, val)
+        setattr(self._md_evo.evo_stats[self.item_id], attr_name, val)  # type: ignore
         self.module.mark_md_evo_as_modified(self.item_id)
     
     def on_btn_add_evo_clicked(self, *args):

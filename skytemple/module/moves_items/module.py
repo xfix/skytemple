@@ -14,8 +14,9 @@
 #
 #  You should have received a copy of the GNU General Public License
 #  along with SkyTemple.  If not, see <https://www.gnu.org/licenses/>.
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 
+from gi.repository import Gtk
 from gi.repository.Gtk import TreeStore, TreeIter
 
 from skytemple.core.abstract_module import AbstractModule
@@ -28,6 +29,7 @@ from skytemple.module.moves_items.controller.main_moves import MainMovesControll
 from skytemple.module.moves_items.controller.main_items import MainItemsController, ITEMS
 from skytemple.module.moves_items.controller.item_lists import ItemListsController
 from skytemple.module.moves_items.controller.item_effects import ItemEffectsController
+from skytemple.module.moves_items.controller.item_keys import ItemKeysController
 from skytemple.module.moves_items.controller.move import MoveController
 from skytemple.module.moves_items.controller.move_effects import MoveEffectsController
 from skytemple_files.common.types.file_types import FileType
@@ -37,6 +39,7 @@ from skytemple_files.data.item_s_p.model import ItemSP, ItemSPEntry
 from skytemple_files.data.val_list.handler import ValListHandler
 from skytemple_files.data.waza_p.model import WazaP, WazaMove
 from skytemple_files.list.items.handler import ItemListHandler
+from skytemple_files.data.val_list.handler import ValListHandler
 from skytemple_files.dungeon_data.mappa_bin.item_list import MappaItemList
 from skytemple_files.common.i18n_util import _
 
@@ -64,9 +67,10 @@ class MovesItemsModule(AbstractModule):
     def __init__(self, rom_project: RomProject):
         self.project = rom_project
 
-        self._tree_model = None
-        self._item_lists_tree_iter = None
+        self._tree_model: Optional[Gtk.TreeModel] = None
+        self._item_lists_tree_iter: Optional[Dict[str, Gtk.TreeIter]] = None
         self._item_effects_tree_iter = None
+        self._item_keys_tree_iter = None
         self._move_effects_tree_iter = None
         self.item_iters: Dict[int, TreeIter] = {}
         self.move_iters: Dict[int, TreeIter] = {}
@@ -84,17 +88,20 @@ class MovesItemsModule(AbstractModule):
         self._item_effects_tree_iter = item_store.append(root_items, [
             'skytemple-view-list-symbolic', _('Item Effects'), self, ItemEffectsController, 0, False, '', True
         ])
+        self._item_keys_tree_iter = item_store.append(root_items, [
+            'skytemple-view-list-symbolic', _('Item Sort Keys'), self, ItemKeysController, 0, False, '', True
+        ])
         self._move_effects_tree_iter = item_store.append(root_moves, [
             'skytemple-view-list-symbolic', _('Move Effects'), self, MoveEffectsController, 0, False, '', True
         ])
 
-        for i, item in enumerate(self.get_item_p().item_list):
+        for i, _item in enumerate(self.get_item_p().item_list):
             name = self.project.get_string_provider().get_value(StringType.ITEM_NAMES, i)
             self.item_iters[i] = (item_store.append(root_items, [
                 'skytemple-e-item-symbolic', f'#{i:04}: {name}', self, ItemController, i, False, '', True
             ]))
 
-        for i, item in enumerate(self.get_waza_p().moves):
+        for i, __item in enumerate(self.get_waza_p().moves):
             name = self.project.get_string_provider().get_value(StringType.MOVE_NAMES, i)
             self.move_iters[i] = (item_store.append(root_moves, [
                 'skytemple-e-move-symbolic', f'#{i:04}: {name}', self, MoveController, i, False, '', True
@@ -193,6 +200,21 @@ class MovesItemsModule(AbstractModule):
 
     def get_move(self, move_id) -> WazaMove:
         return self.get_waza_p().moves[move_id]
+
+    def get_i2n(self, in_lang: str) -> List[int]:
+        sp = self.project.get_string_provider()
+        lang = sp.get_language(in_lang)
+        i2n_model = self.project.open_file_in_rom(f"BALANCE/{lang.sort_lists.i2n}", ValListHandler)
+        return i2n_model.get_list()
+    
+    def set_i2n(self, in_lang: str, values: List[int]):
+        sp = self.project.get_string_provider()
+        lang = sp.get_language(in_lang)
+        i2n_model = self.project.open_file_in_rom(f"BALANCE/{lang.sort_lists.i2n}", ValListHandler)
+        i2n_model.set_list(values)
+        self.project.mark_as_modified(f"BALANCE/{lang.sort_lists.i2n}")
+        row = self._tree_model[self._item_keys_tree_iter]  # type: ignore
+        recursive_up_item_store_mark_as_modified(row)
 
     def mark_move_as_modified(self, move_id):
         self.project.mark_as_modified(MOVE_FILE)

@@ -19,17 +19,14 @@ import os
 import re
 import sys
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, List
 
 import cairo
 
 from skytemple.core.error_handler import display_error
 from skytemple_files.common.i18n_util import f, _
 
-try:
-    from PIL import Image
-except:
-    from pil import Image
+from PIL import Image
 from gi.repository import Gtk, GLib
 
 from skytemple.controller.main import MainController
@@ -46,10 +43,10 @@ class ObjectController(AbstractController):
         self.module = module
         self.item_id = item_id
         self._sprite_provider = module.get_sprite_provider()
-        self._draws = []
-        self._surfaces = []
+        self._draws: List[Gtk.DrawingArea] = []
+        self._surfaces: List[cairo.Surface] = []
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
 
     def get_view(self) -> Gtk.Widget:
         self.builder = self._get_builder(__file__, 'object.glade')
@@ -86,6 +83,13 @@ Warning: SkyTemple does not validate the files you import."""))
 
     def on_import_clicked(self, *args):
         sprite = self.module.import_a_sprite()
+        if sprite is None:
+            return
+        self.module.save_object_sprite(self.item_id, sprite)
+        MainController.reload_view()
+
+    def on_importimage_clicked(self, *args):
+        sprite = self.module.import_an_image()
         if sprite is None:
             return
         self.module.save_object_sprite(self.item_id, sprite)

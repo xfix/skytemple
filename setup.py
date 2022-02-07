@@ -1,4 +1,4 @@
-__version__ = '1.3.2'
+__version__ = '1.4.0'
 
 import glob
 import os
@@ -74,23 +74,22 @@ setup(
         'skytemple-ssb-debugger >= 1.3.0',
         'pygal >= 2.4.0',
         'CairoSVG >= 2.4.2',
+        'gbulb >= 0.6.2',
         'packaging'
     ],
     extras_require={
-        'discord':  ["pypresence >= 4.2.0"],
+        'discord':  ["pypresence >= 4.2.1"],
         'eventserver': ["skytemple-eventserver >= 1.0.0"]
     },
     classifiers=[
         'Development Status :: 4 - Beta',
         'Programming Language :: Python',
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
     ],
-    package_data={'skytemple': ['*.css'] + recursive_pkg_files('.glade') + recursive_pkg_files_in('data/') + create_mo_files()},
+    package_data={'skytemple': ['*.css', 'py.typed'] + recursive_pkg_files('.glade') + recursive_pkg_files_in('data/') + create_mo_files()},
     entry_points='''
         [skytemple.module]
         rom=          skytemple.module.rom.module:RomModule

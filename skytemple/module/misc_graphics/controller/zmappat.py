@@ -26,10 +26,7 @@ from skytemple.core.message_dialog import SkyTempleMessageDialog
 from skytemple_files.graphics.zmappat.model import ZMappaT, ZMappaTVariation
 from skytemple_files.graphics.zmappat import *
 
-try:
-    from PIL import Image
-except:
-    from pil import Image
+from PIL import Image
 from gi.repository import Gtk
 from gi.repository.Gtk import ResponseType
 
@@ -50,7 +47,7 @@ class ZMappaTController(AbstractController):
         self.filename = item
         self.zmappat: ZMappaT = self.module.get_dungeon_bin_file(self.filename)
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
 
     def get_view(self) -> Gtk.Widget:
         self.builder = self._get_builder(__file__, 'zmappat.glade')

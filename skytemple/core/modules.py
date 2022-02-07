@@ -18,13 +18,14 @@
 import logging
 
 import pkg_resources
+from typing import Dict
 
 MODULE_ENTRYPOINT_KEY = 'skytemple.module'
 logger = logging.getLogger(__name__)
 
 
 class Modules:
-    _modules = {}
+    _modules: Dict = {}
 
     @classmethod
     def load(cls):
@@ -38,7 +39,7 @@ class Modules:
             logger.warning("Failed loading modules.", exc_info=ex)
 
         if len(cls._modules) < 1:
-            logger.warning("No module fount, falling back to default.")
+            logger.warning("No module found, falling back to default.")
             # PyInstaller under Windows has no idea what (custom) entrypoints are...
             # TODO: Figure out a better way to do this...
             cls._modules = cls._load_windows_modules()

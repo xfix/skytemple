@@ -30,8 +30,7 @@ from skytemple.core.sprite_provider import SpriteProvider
 from skytemple.core.ui_utils import APP, make_builder
 from skytemple.module.script.drawer import Drawer, InteractionMode
 from skytemple_files.common.ppmdu_config.script_data import Pmd2ScriptLevel, Pmd2ScriptLevelMapType
-from skytemple_files.graphics.bg_list_dat.model import BgList
-from skytemple_files.graphics.bpc.model import BPC_TILE_DIM
+from skytemple_files.graphics.bpc import BPC_TILE_DIM
 from skytemple_files.hardcoded.ground_dungeon_tilesets import resolve_mapping_for_level
 from skytemple_files.script.ssa_sse_sss.model import Ssa
 from skytemple_files.script.ssa_sse_sss.trigger import SsaTrigger
@@ -64,7 +63,7 @@ class PosMarkEditorController:
         self._bg_draw_is_clicked__drag_active = False
         self._map_bg_width = SIZE_REQUEST_NONE
         self._map_bg_height = SIZE_REQUEST_NONE
-        self._map_bg_surface = None
+        self._map_bg_surface: Optional[cairo.Surface] = None
         self._currently_selected_mark: Optional[SourceMapPositionMark] = None
 
         self._w_ssa_draw: Gtk.DrawingArea = self.builder.get_object('ssa_draw')
@@ -96,6 +95,7 @@ class PosMarkEditorController:
         correct_mouse_x = int((button.x - 4) / self._scale_factor)
         correct_mouse_y = int((button.y - 4) / self._scale_factor)
         if button.button == 1:
+            assert self.drawer
             self._bg_draw_is_clicked__drag_active = False
             self._bg_draw_is_clicked__location = (int(button.x), int(button.y))
             self.drawer.set_mouse_position(correct_mouse_x, correct_mouse_y)
@@ -113,9 +113,9 @@ class PosMarkEditorController:
             if self._currently_selected_mark is not None:
                 if self._bg_draw_is_clicked__drag_active:
                     # END DRAG / UPDATE POSITION
-                    tile_x, tile_y = self.drawer.get_current_drag_entity_pos()
-                    tile_x /= BPC_TILE_DIM
-                    tile_y /= BPC_TILE_DIM
+                    rtile_x, rtile_y = self.drawer.get_current_drag_entity_pos()
+                    tile_x = rtile_x / BPC_TILE_DIM
+                    tile_y = rtile_y / BPC_TILE_DIM
                     # Out of bounds failsafe:
                     if tile_x < 0:
                         tile_x = 0
@@ -180,7 +180,7 @@ class PosMarkEditorController:
             self.mapbg_id = item_id
             bma = self.map_bg_module.get_bma(item_id)
             if self._tileset_drawer_overlay and self._tileset_drawer_overlay.enabled:
-                self._map_bg_surface = self._tileset_drawer_overlay.create(bma.layer0, bma.map_width_chunks, bma.map_height_chunks)
+                self._map_bg_surface = self._tileset_drawer_overlay.create(bma.layer0, bma.map_width_chunks, bma.map_height_chunks)  # type: ignore
                 bma_width = bma.map_width_camera * BPC_TILE_DIM
                 bma_height = bma.map_height_camera * BPC_TILE_DIM
             else:
@@ -197,7 +197,7 @@ class PosMarkEditorController:
 
     def _init_all_the_stores(self):
         # MAP BGS
-        map_bg_list: BgList = self.map_bg_module.bgs
+        map_bg_list = self.map_bg_module.bgs
         tool_choose_map_bg_cb: Gtk.ComboBox = self.builder.get_object('tool_choose_map_bg_cb')
         map_bg_store = Gtk.ListStore(int, str)  # ID, BMA name
         default_bg = map_bg_store.append([-1, _("None")])
@@ -224,7 +224,7 @@ class PosMarkEditorController:
         self._w_ssa_draw.set_size_request(
             self._map_bg_width * self._scale_factor, self._map_bg_height * self._scale_factor
         )
-        self.drawer.map_bg = surface
+        self.drawer.map_bg = surface  # type: ignore
         self._w_ssa_draw.queue_draw()
 
     def _update_scales(self):

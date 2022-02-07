@@ -15,29 +15,30 @@
 #  You should have received a copy of the GNU General Public License
 #  along with SkyTemple.  If not, see <https://www.gnu.org/licenses/>.
 import threading
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import cairo
 from gi.repository import Gdk, GdkPixbuf, Gtk
 
 from skytemple.core.img_utils import pil_to_cairo_surface
-from skytemple_files.common.task_runner import AsyncTaskRunner
+from skytemple.core.async_tasks.delegator import AsyncTaskDelegator
 from skytemple_files.data.md.model import MdProperties
-from skytemple_files.graphics.kao.model import Kao, KAO_IMG_METAPIXELS_DIM, KAO_IMG_IMG_DIM
+from skytemple_files.graphics.kao import KAO_IMG_METAPIXELS_DIM, KAO_IMG_IMG_DIM
+from skytemple_files.graphics.kao.protocol import KaoProtocol
 
 IMG_DIM = KAO_IMG_METAPIXELS_DIM * KAO_IMG_IMG_DIM
-portrait_provider_lock = threading.Lock()
+portrait_provider_lock = threading.RLock()
 
 
 class PortraitProvider:
     """
     PortraitProvider. This class renders portraits using Threads. If a portrait is requested, a loading icon
-    is returned instead, until it is loaded by the AsyncTaskRunner.
+    is returned instead, until it is loaded by the AsyncTaskDelegator.
     """
-    def __init__(self, kao: Kao):
+    def __init__(self, kao: KaoProtocol):
         self._kao = kao
-        self._loader_surface = None
-        self._error_surface = None
+        self._loader_surface: Optional[cairo.ImageSurface] = None
+        self._error_surface: Optional[cairo.ImageSurface] = None
 
         self._loaded: Dict[Tuple[int, int], cairo.Surface] = {}
         self._loaded__is_fallback: Dict[Tuple[int, int], bool] = {}
@@ -89,13 +90,13 @@ class PortraitProvider:
         return self.get_loader()
 
     def _load(self, entry_id, sub_id, after_load_cb, allow_fallback):
-        AsyncTaskRunner.instance().run_task(self._load__impl(entry_id, sub_id, after_load_cb, allow_fallback))
+        AsyncTaskDelegator.run_task(self._load__impl(entry_id, sub_id, after_load_cb, allow_fallback))
 
     async def _load__impl(self, entry_id, sub_id, after_load_cb, allow_fallback):
         is_fallback = False
         try:
             kao = self._kao.get(entry_id, sub_id)
-            if kao is None or kao.empty is True:
+            if kao is None:
                 if allow_fallback:
                     is_fallback = True
                     kao = self._kao.get(entry_id % MdProperties.NUM_ENTITIES, sub_id)
@@ -106,7 +107,7 @@ class PortraitProvider:
             portrait_pil = kao.get()
             surf = pil_to_cairo_surface(portrait_pil.convert('RGBA'))
             loaded = surf
-        except (RuntimeError, ValueError):
+        except (RuntimeError, ValueError, OverflowError):
             loaded = self.get_error()
         with portrait_provider_lock:
             self._loaded[(entry_id, sub_id)] = loaded
@@ -118,10 +119,10 @@ class PortraitProvider:
         """
         Returns the loader sprite. A "loading" icon with the size ~24x24px.
         """
-        return self._loader_surface
+        return self._loader_surface  # type: ignore
 
     def get_error(self) -> cairo.Surface:
         """
         Returns the error sprite. An "error" icon with the size ~24x24px.
         """
-        return self._error_surface
+        return self._error_surface  # type: ignore

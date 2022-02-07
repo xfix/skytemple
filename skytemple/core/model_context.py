@@ -27,7 +27,7 @@ class ModelContext(Generic[T]):
     """
     def __init__(self, model: T):
         self._model = model
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def __enter__(self) -> T:
         self._lock.acquire()

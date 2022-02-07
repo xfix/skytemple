@@ -29,9 +29,15 @@ logger = logging.getLogger(__name__)
 
 class AbstractController(ABC):
     @abstractmethod
-    def __init__(self, module: AbstractModule, item_id: any):
+    def __init__(self, module: AbstractModule, item_id):
         """NO Gtk operations allowed here, not threadsafe!"""
         pass
+
+    async def async_init(self):
+        """
+        Optional asynchronous initialization, called after __init__.
+        NO Gtk operations allowed here, not threadsafe!
+        """
 
     @abstractmethod
     def get_view(self) -> Widget:
@@ -54,7 +60,7 @@ class AbstractController(ABC):
                     obj.destroy()
 
     @staticmethod
-    def _get_builder(pymodule_path: str, glade_file: str):
+    def _get_builder(pymodule_path: str, glade_file: str) -> Gtk.Builder:
         path = os.path.abspath(os.path.dirname(pymodule_path))
         return make_builder(os.path.join(path, glade_file))
 
@@ -100,7 +106,7 @@ class SimpleController(AbstractController, ABC):
             style: Gtk.StyleContext = main_box.get_style_context()
             style.add_class('back_illust')
             style.add_class(back_illust)
-            style: Gtk.StyleContext = content_box.get_style_context()
+            style = content_box.get_style_context()
             style.add_class('no_bg')
 
         main_box.show_all()

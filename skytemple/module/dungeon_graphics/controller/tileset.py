@@ -23,7 +23,7 @@ import sys
 import webbrowser
 from collections import OrderedDict
 from functools import partial
-from typing import TYPE_CHECKING, List, Iterable, Callable
+from typing import TYPE_CHECKING, List, Iterable, Callable, Optional
 
 import cairo
 
@@ -42,10 +42,7 @@ from skytemple_dtef.explorers_dtef_importer import ExplorersDtefImporter
 from skytemple_files.common.xml_util import prettify
 from skytemple_files.hardcoded.dungeons import SecondaryTerrainTableEntry, HardcodedDungeons
 
-try:
-    from PIL import Image
-except ImportError:
-    from pil import Image
+from PIL import Image
 from gi.repository import Gtk
 
 from skytemple.controller.main import MainController
@@ -90,7 +87,7 @@ class TilesetController(AbstractController):
         self.module = module
         self.item_id = item_id
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
 
         self.dma: Dma = module.get_dma(item_id)
         self.dpl: Dpl = module.get_dpl(item_id)
@@ -112,10 +109,11 @@ class TilesetController(AbstractController):
         self._init_chunk_imgs()
         self.dtef = None
 
-        self.menu_controller = BgMenuController(self)
+        self.menu_controller = BgMenuController(self)  # type: ignore
 
     def get_view(self) -> Gtk.Widget:
         self.builder = self._get_builder(__file__, 'tileset.glade')
+        assert self.builder
         self._init_rules()
         self._init_rule_icon_views()
         self._init_chunk_picker_icon_view()
@@ -429,6 +427,7 @@ class TilesetController(AbstractController):
         self._init_an_icon_view("rules_chunk_picker", init_store, True, True)
 
     def _init_an_icon_view(self, name: str, init_store: Callable[[Gtk.ListStore], None], selection_draw_solid, select_first=False):
+        assert self.builder
         icon_view: Gtk.IconView = self.builder.get_object(name)
         if icon_view.get_model() == None:
             #                     id, val

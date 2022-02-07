@@ -17,7 +17,7 @@
 import logging
 import os
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple, Optional
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -31,13 +31,11 @@ from skytemple.core.message_dialog import SkyTempleMessageDialog
 from skytemple.core.model_context import ModelContext
 from skytemple_files.common.types.file_types import FileType
 from skytemple_files.container.bin_pack.model import BinPack
+from skytemple_files.graphics.chara_wan.model import WanFile
 from skytemple_files.graphics.wan_wat.model import Wan
 from skytemple_files.common.i18n_util import f, _
 
-try:
-    from PIL import Image
-except:
-    from pil import Image
+from PIL import Image
 from gi.repository import Gtk, GLib
 
 from skytemple.core.module_controller import AbstractController
@@ -63,9 +61,9 @@ class MonsterSpriteController(AbstractController):
         self._drawing_is_active = 0
         self._draw_area = None
         self._monster_bin: ModelContext[BinPack] = self.module.get_monster_bin_ctx()
-        self._rendered_frame_info = []
+        self._rendered_frame_info: List[Tuple[int, Tuple[cairo.Surface, int, int, int, int]]] = []
 
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
 
     def get_view(self) -> Gtk.Widget:
         if self.item_id < 0:
@@ -151,9 +149,9 @@ Warning: SkyTemple does not validate the files you import."""))
 
         if response == Gtk.ResponseType.ACCEPT:
             try:
-                monster = self.module.get_monster_monster_sprite_chara(self.item_id)
-                ground = self.module.get_monster_ground_sprite_chara(self.item_id)
-                attack = self.module.get_monster_attack_sprite_chara(self.item_id)
+                monster: WanFile = self.module.get_monster_monster_sprite_chara(self.item_id)  # type: ignore
+                ground: WanFile = self.module.get_monster_ground_sprite_chara(self.item_id)  # type: ignore
+                attack: WanFile = self.module.get_monster_attack_sprite_chara(self.item_id)  # type: ignore
                 merged = FileType.WAN.CHARA.merge_wan(monster, ground, attack)
                 merged.sdwSize = self._get_shadow_size_cb()
                 try:
@@ -255,7 +253,7 @@ Warning: SkyTemple does not validate the files you import."""))
                 else:
                     with ZipFile(fn, 'r') as ZipObj:
                         tree = ElementTree.fromstring(ZipObj.read('AnimData.xml'))
-                self._set_shadow_size_cb(int(tree.find('ShadowSize').text))
+                self._set_shadow_size_cb(int(tree.find('ShadowSize').text))  # type: ignore
 
                 cb()
                 self._mark_as_modified_cb()
@@ -268,7 +266,7 @@ Warning: SkyTemple does not validate the files you import."""))
                 )
 
     def on_export_ground_clicked(self, w: Gtk.MenuToolButton):
-        self.module.export_a_sprite(self.module.get_monster_ground_sprite_chara(self.item_id, raw=True))
+        self.module.export_a_sprite(self.module.get_monster_ground_sprite_chara(self.item_id, raw=True))  # type: ignore
 
     def on_import_ground_clicked(self, w: Gtk.MenuToolButton):
         sprite = self.module.import_a_sprite()
@@ -279,7 +277,7 @@ Warning: SkyTemple does not validate the files you import."""))
         MainController.reload_view()
 
     def on_export_dungeon_clicked(self, w: Gtk.MenuToolButton):
-        self.module.export_a_sprite(self.module.get_monster_monster_sprite_chara(self.item_id, raw=True))
+        self.module.export_a_sprite(self.module.get_monster_monster_sprite_chara(self.item_id, raw=True))  # type: ignore
 
     def on_import_dungeon_clicked(self, w: Gtk.MenuToolButton):
         sprite = self.module.import_a_sprite()
@@ -290,7 +288,7 @@ Warning: SkyTemple does not validate the files you import."""))
         MainController.reload_view()
 
     def on_export_attack_clicked(self, w: Gtk.MenuToolButton):
-        self.module.export_a_sprite(self.module.get_monster_attack_sprite_chara(self.item_id, raw=True))
+        self.module.export_a_sprite(self.module.get_monster_attack_sprite_chara(self.item_id, raw=True))  # type: ignore
 
     def on_import_attack_clicked(self, w: Gtk.MenuToolButton):
         sprite = self.module.import_a_sprite()
@@ -320,7 +318,7 @@ Warning: SkyTemple does not validate the files you import."""))
         with self._monster_bin as monster_bin:
             sprite = self._load_sprite_from_bin_pack(monster_bin, self.item_id)
 
-            ani_group = sprite.get_animations_for_group(sprite.anim_groups[0])
+            ani_group = sprite.anim_groups[0]
             frame_id = 2
             for frame in ani_group[frame_id].frames:
                 mfg_id = frame.frame_id

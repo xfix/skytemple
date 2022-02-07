@@ -25,7 +25,7 @@ from gi.repository import Gtk, GLib
 
 from skytemple.controller.main import MainController
 from skytemple.core.ui_utils import data_dir, APP, make_builder
-from skytemple_files.common.task_runner import AsyncTaskRunner
+from skytemple.core.async_tasks.delegator import AsyncTaskDelegator
 from skytemple_files.common.i18n_util import f, _
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ class GfxcrunchController:
     def import_sprite(self, dir_fn: str) -> bytes:
         with tempfile.TemporaryDirectory() as tmp_path:
             tmp_path = os.path.join(tmp_path, 'tmp.wan')
-            AsyncTaskRunner.instance().run_task(self._run_gfxcrunch([dir_fn, tmp_path]))
+            AsyncTaskDelegator.run_task(self._run_gfxcrunch([dir_fn, tmp_path]))
             self._run_window()
             if self.status == GfxcrunchStatus.SUCCESS:
                 with open(tmp_path, 'rb') as f:
@@ -74,7 +74,7 @@ class GfxcrunchController:
             tmp_path = os.path.join(tmp_path, 'tmp.wan')
             with open(tmp_path, 'wb') as f:
                 f.write(wan)
-            AsyncTaskRunner.instance().run_task(self._run_gfxcrunch([tmp_path, dir_fn]))
+            AsyncTaskDelegator.run_task(self._run_gfxcrunch([tmp_path, dir_fn]))
             self._run_window()
             if self.status != GfxcrunchStatus.SUCCESS:
                 raise RuntimeError(_("The gfxcrunch process failed."))
@@ -105,23 +105,23 @@ class GfxcrunchController:
         )
 
         while proc.poll() is None:
-            line = proc.stdout.readline()
+            line = proc.stdout.readline()  # type: ignore
             if line != "" and line:
                 GLib.idle_add(lambda line=line: self._stdout(line))
 
-            line = proc.stderr.readline()
+            line = proc.stderr.readline()  # type: ignore
             if line != "" and line:
                 GLib.idle_add(lambda line=line: self._stderr(line))
 
-        line = proc.stdout.readline()
+        line = proc.stdout.readline()  # type: ignore
         while line != "" and line:
             GLib.idle_add(lambda line=line: self._stdout(line))
-            line = proc.stdout.readline()
+            line = proc.stdout.readline()  # type: ignore
 
-        line = proc.stderr.readline()
+        line = proc.stderr.readline()  # type: ignore
         while line != "" and line:
             GLib.idle_add(lambda line=line: self._stderr(line))
-            line = proc.stderr.readline()
+            line = proc.stderr.readline()  # type: ignore
 
         GLib.idle_add(lambda: self._done(proc.returncode))
 

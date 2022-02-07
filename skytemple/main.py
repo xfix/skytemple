@@ -20,61 +20,67 @@ import sys
 import locale
 import gettext
 from skytemple.core.ui_utils import data_dir, APP, gdk_backend, GDK_BACKEND_BROADWAY
-
-# Setup locale :(
 from skytemple.core.settings import SkyTempleSettingsStore
-LOCALE_DIR = os.path.abspath(os.path.join(data_dir(), 'locale'))
+from skytemple_files.common.impl_cfg import ENV_SKYTEMPLE_USE_NATIVE, change_implementation_type
+
 settings = SkyTempleSettingsStore()
-if hasattr(locale, 'bindtextdomain'):
-    libintl = locale
-elif sys.platform.startswith('win'):
-    import ctypes
-    import ctypes.util
-    if os.getenv('LANG') is None:
-        lang, enc = locale.getdefaultlocale()
-        os.environ['LANG'] = lang
-        ctypes.cdll.msvcrt._putenv ("LANG=" + lang)
-    libintl_loc = os.path.join(os.path.dirname(__file__), 'libintl-8.dll')
-    if os.path.exists(libintl_loc):
-        libintl = ctypes.cdll.LoadLibrary(libintl_loc)
-    else:
-        libintl = ctypes.cdll.LoadLibrary(ctypes.util.find_library('libintl-8'))
-elif sys.platform == 'darwin':
-    import ctypes
-    libintl = ctypes.cdll.LoadLibrary('libintl.dylib')
-if not os.getenv('LC_ALL'):
+if __name__ == '__main__':
+    # Setup native library integration
+    if ENV_SKYTEMPLE_USE_NATIVE not in os.environ:
+        change_implementation_type(settings.get_implementation_type())
+
+    # Setup locale :(
+    LOCALE_DIR = os.path.abspath(os.path.join(data_dir(), 'locale'))
+    if hasattr(locale, 'bindtextdomain'):
+        libintl = locale
+    elif sys.platform.startswith('win'):
+        import ctypes
+        import ctypes.util
+        if os.getenv('LANG') is None:
+            lang, enc = locale.getdefaultlocale()
+            os.environ['LANG'] = lang
+            ctypes.cdll.msvcrt._putenv ("LANG=" + lang)
+        libintl_loc = os.path.join(os.path.dirname(__file__), 'libintl-8.dll')
+        if os.path.exists(libintl_loc):
+            libintl = ctypes.cdll.LoadLibrary(libintl_loc)
+        else:
+            libintl = ctypes.cdll.LoadLibrary(ctypes.util.find_library('libintl-8'))
+    elif sys.platform == 'darwin':
+        import ctypes
+        libintl = ctypes.cdll.LoadLibrary('libintl.dylib')
+    if not os.getenv('LC_ALL'):
+        try:
+            os.environ['LC_ALL'] = settings.get_locale()
+            locale.setlocale(locale.LC_ALL, settings.get_locale())
+        except locale.Error as ex:
+            logging.error("Failed setting locale", exc_info=ex)
+    libintl.bindtextdomain(APP, LOCALE_DIR)  # type: ignore
     try:
-        os.environ['LC_ALL'] = settings.get_locale()
-        locale.setlocale(locale.LC_ALL, settings.get_locale())
-    except locale.Error as ex:
-        logging.error("Failed setting locale", exc_info=ex)
-libintl.bindtextdomain(APP, LOCALE_DIR)
-try:
-    libintl.bind_textdomain_codeset(APP, 'UTF-8')
-    libintl.libintl_setlocale(0, settings.get_locale())
-except:
-    pass
-gettext.bindtextdomain(APP, LOCALE_DIR)
-gettext.textdomain(APP)
-try:
-    if os.environ['LC_ALL'] != 'C':
-        loc = os.environ['LC_ALL']
-        if loc == '':
-            loc = locale.getdefaultlocale()[0]
-        from skytemple_files.common.i18n_util import reload_locale
-        base_loc = loc.split('_')[0]
-        fallback_loc = base_loc
-        for subdir in next(os.walk(LOCALE_DIR))[1]:
-            if subdir.startswith(base_loc):
-                fallback_loc = subdir
-                break
-        reload_locale(APP, localedir=LOCALE_DIR, main_languages=list({loc, base_loc, fallback_loc}))
-except Exception as ex:
-    print("Faild setting up Python locale.")
-    print(ex)
-from skytemple.core import ui_utils
-from importlib import reload
-reload(ui_utils)
+        libintl.bind_textdomain_codeset(APP, 'UTF-8')  # type: ignore
+        libintl.libintl_setlocale(0, settings.get_locale())  # type: ignore
+    except:
+        pass
+    gettext.bindtextdomain(APP, LOCALE_DIR)
+    gettext.textdomain(APP)
+    try:
+        if os.environ['LC_ALL'] != 'C':
+            loc = os.environ['LC_ALL']
+            if loc == '':
+                loc = locale.getdefaultlocale()[0]  # type: ignore
+            from skytemple_files.common.i18n_util import reload_locale
+            base_loc = loc.split('_')[0]
+            fallback_loc = base_loc
+            for subdir in next(os.walk(LOCALE_DIR))[1]:
+                if subdir.startswith(base_loc):
+                    fallback_loc = subdir
+                    break
+            reload_locale(APP, localedir=LOCALE_DIR, main_languages=list({loc, base_loc, fallback_loc}))
+    except Exception as ex:
+        print("Faild setting up Python locale.")
+        print(ex)
+    from skytemple.core import ui_utils
+    from importlib import reload
+    reload(ui_utils)
 
 import gi
 from skytemple_files.common.i18n_util import _
@@ -87,7 +93,6 @@ setup_logging()
 from skytemple.core.message_dialog import SkyTempleMessageDialog
 from skytemple.core.events.manager import EventManager
 from skytemple.core.modules import Modules
-from skytemple_files.common.task_runner import AsyncTaskRunner
 from skytemple_icons import icons
 from skytemple_ssb_debugger.main import get_debugger_data_dir
 from skytemple.core.ui_utils import make_builder
@@ -112,12 +117,9 @@ from skytemple.controller.main import MainController
 SKYTEMPLE_LOGLEVEL = logging.INFO
 
 
-def main():
+def run_main(settings: SkyTempleSettingsStore):
     # TODO: Gtk.Application: https://python-gtk-3-tutorial.readthedocs.io/en/latest/application.html
     path = os.path.abspath(os.path.dirname(__file__))
-
-    # Load settings
-    settings = SkyTempleSettingsStore()
 
     if sys.platform.startswith('win'):
         # Load theming under Windows
@@ -168,9 +170,6 @@ def main():
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )
 
-    # Load async task runner thread
-    AsyncTaskRunner.instance()
-
     # Init. core events
     event_manager = EventManager.instance()
     if settings.get_integration_discord_enabled():
@@ -178,8 +177,8 @@ def main():
             from skytemple.core.events.impl.discord import DiscordPresence
             discord_listener = DiscordPresence()
             event_manager.register_listener(discord_listener)
-        except BaseException:
-            pass
+        except BaseException as exc:
+            logging.warning("Error setting up Discord integration:", exc_info=exc)
 
     # Load modules
     Modules.load()
@@ -189,10 +188,6 @@ def main():
 
     main_window.present()
     main_window.set_icon_name('skytemple')
-    try:
-        Gtk.main()
-    except (KeyboardInterrupt, SystemExit):
-        AsyncTaskRunner.end()
 
 
 def _load_theme(settings: SkyTempleSettingsStore):
@@ -213,8 +208,13 @@ def _load_theme(settings: SkyTempleSettingsStore):
     gtk_settings.set_property("gtk-theme-name", theme)
 
 
-if __name__ == '__main__':
+def main():
     # TODO: At the moment doesn't support any cli arguments.
     logging.basicConfig()
     logging.getLogger().setLevel(SKYTEMPLE_LOGLEVEL)
+    from skytemple.core.async_tasks.delegator import AsyncTaskDelegator
+    AsyncTaskDelegator.run_main(run_main, settings)
+
+
+if __name__ == '__main__':
     main()

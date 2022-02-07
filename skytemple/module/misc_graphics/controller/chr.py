@@ -25,10 +25,7 @@ from skytemple.core.error_handler import display_error
 from skytemple.core.ui_utils import add_dialog_png_filter
 from skytemple_files.graphics.chr.model import Chr
 
-try:
-    from PIL import Image
-except:
-    from pil import Image
+from PIL import Image
 from gi.repository import Gtk
 from gi.repository.Gtk import ResponseType
 
@@ -49,7 +46,7 @@ class ChrController(AbstractController):
         self.filename = filename
         self.chr: Chr = self.module.get_chr(self.filename)
         
-        self.builder = None
+        self.builder: Optional[Gtk.Builder] = None
 
     def get_view(self) -> Gtk.Widget:
         self.builder = self._get_builder(__file__, 'chr.glade')

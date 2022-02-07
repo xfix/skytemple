@@ -45,7 +45,7 @@ from skytemple_files.common.i18n_util import f, _
 from skytemple_files.container.dungeon_bin.model import DungeonBinPack
 from skytemple_files.dungeon_data.fixed_bin.model import FixedBin
 from skytemple_files.dungeon_data.mappa_bin.model import MappaBin
-from skytemple_files.graphics.bg_list_dat.model import BgList
+from skytemple_files.graphics.bg_list_dat.protocol import BgListProtocol
 from skytemple_files.hardcoded.dungeons import DungeonDefinition, HardcodedDungeons
 from skytemple_files.hardcoded.ground_dungeon_tilesets import HardcodedGroundDungeonTilesets, GroundTilesetMapping
 from skytemple_files.list.level.model import LevelListBin
@@ -83,7 +83,7 @@ class ScriptModule(AbstractModule):
         self._tree_model: Optional[TreeStore] = None
         self._root = None
         self._other_node = None
-        self._sub_nodes = None
+        self._sub_nodes: Optional[Dict[str, Gtk.TreeIter]] = None
 
     def load_tree_items(self, item_store: TreeStore, root_node):
         # -> Script [main]
@@ -207,14 +207,14 @@ class ScriptModule(AbstractModule):
             if request.identifier[0] in self._map_ssas:
                 for it in self._map_ssas[request.identifier[0]].values():
                     # Check if the filename of the tree iter entry (see load_tree_items) matches the request filename.
-                    file_name = self._tree_model[it][4]['file'].split('/')[-1]
+                    file_name = self._tree_model[it][4]['file'].split('/')[-1]  # type: ignore
                     if file_name == request.identifier[1]:
                         return it
         if request.type == REQUEST_TYPE_SCENE_SSS:
             if request.identifier[0] in self._map_ssss:
                 for it in self._map_ssss[request.identifier[0]].values():
                     # Check if the filename of the tree iter entry (see load_tree_items) matches the request filename.
-                    file_name = self._tree_model[it][4]['file'].split('/')[-1]
+                    file_name = self._tree_model[it][4]['file'].split('/')[-1]  # type: ignore
                     if file_name == request.identifier[1]:
                         return it
         return None
@@ -288,7 +288,7 @@ class ScriptModule(AbstractModule):
         self.project.mark_as_modified(LEVEL_LIST)
         recursive_up_item_store_mark_as_modified(self._tree_model[self._root])
 
-    def get_bg_level_list(self) -> BgList:
+    def get_bg_level_list(self) -> BgListProtocol:
         return self.project.open_file_in_rom('MAP_BG/bg_list.dat', FileType.BG_LIST_DAT)
 
     def get_map_display_name(self, nameid):
@@ -296,8 +296,8 @@ class ScriptModule(AbstractModule):
         if nameid == 0:
             return sp.get_value(StringType.GROUND_MAP_NAMES, 0), sp.get_index(StringType.GROUND_MAP_NAMES, 0)
         if nameid < 181:
-            return sp.get_value(StringType.DUNGEON_NAMES_SELECTION, nameid - 1), sp.get_index(StringType.DUNGEON_NAMES_SELECTION, nameid - 1)
-        return sp.get_value(StringType.GROUND_MAP_NAMES, nameid - 182), sp.get_index(StringType.GROUND_MAP_NAMES, nameid - 182)
+            return sp.get_value(StringType.DUNGEON_NAMES_SELECTION, nameid + 1), sp.get_index(StringType.DUNGEON_NAMES_SELECTION, nameid + 1)
+        return sp.get_value(StringType.GROUND_MAP_NAMES, nameid - 180), sp.get_index(StringType.GROUND_MAP_NAMES, nameid - 180)
 
     def get_dungeon_tilesets(self) -> List[GroundTilesetMapping]:
         config = self.project.get_rom_module().get_static_data()
@@ -311,7 +311,7 @@ class ScriptModule(AbstractModule):
                 value, binary, config
             )
         )
-        recursive_up_item_store_mark_as_modified(self._tree_model[self._root])
+        recursive_up_item_store_mark_as_modified(self._tree_model[self._root])  # type: ignore
 
     def create_new_level(self, new_name):
         parent = self._other_node
